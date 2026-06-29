@@ -1,0 +1,17 @@
+# Runtime dependencies (mirror of [project.dependencies] in pyproject.toml).
+# Kept as a flat list for Nuitka packaging and air-gapped offline installs.
+# Install with:  python -m pip install -r requirements.txt
+PySide6>=6.6,<6.9
+SQLAlchemy>=2.0,<2.1
+alembic>=1.13
+pydantic>=2.6,<3
+pydantic-settings>=2.2
+argon2-cffi>=23.1
+cryptography>=42.0
+python-dateutil>=2.9
+reportlab>=4.1
+openpyxl>=3.1
+qrcode[pil]>=7.4
+python-barcode>=0.15
+opencv-python>=4.9
+Pillow>=10.2

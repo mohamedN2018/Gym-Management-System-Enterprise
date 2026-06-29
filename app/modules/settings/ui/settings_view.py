@@ -1,0 +1,99 @@
+"""Settings view — edit company settings (presentation only)."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from PySide6.QtWidgets import (
+    QFormLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
+
+from app.infrastructure.bootstrap import ApplicationContext
+from app.modules.settings.models.setting import SettingKeys
+from app.modules.settings.services import SettingsService
+
+if TYPE_CHECKING:
+    from app.modules.security.dtos import AuthenticatedUser
+
+
+class SettingsView(QWidget):
+    def __init__(
+        self, context: ApplicationContext, current_user: AuthenticatedUser | None = None
+    ) -> None:
+        super().__init__()
+        self._loc = context.localization
+        self._current_user = current_user
+        self._service: SettingsService = context.container.resolve(SettingsService)
+        self._build_ui()
+        self._unsubscribe = self._loc.on_change(lambda _c: self._retranslate())
+        self.destroyed.connect(lambda: self._unsubscribe())
+        self._retranslate()
+        self._load()
+
+    def _build_ui(self) -> None:
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(28, 24, 28, 24)
+        layout.setSpacing(16)
+        self._title = QLabel()
+        self._title.setObjectName("PageTitle")
+        layout.addWidget(self._title)
+
+        form = QFormLayout()
+        form.setSpacing(12)
+        self._company_name = QLineEdit()
+        self._currency = QLineEdit()
+        self._phone = QLineEdit()
+        self._row_company = QLabel()
+        self._row_currency = QLabel()
+        self._row_phone = QLabel()
+        form.addRow(self._row_company, self._company_name)
+        form.addRow(self._row_currency, self._currency)
+        form.addRow(self._row_phone, self._phone)
+        layout.addLayout(form)
+
+        bar = QHBoxLayout()
+        bar.addStretch(1)
+        self._save = QPushButton()
+        self._save.setDefault(True)
+        self._save.clicked.connect(self._on_save)
+        bar.addWidget(self._save)
+        layout.addLayout(bar)
+        layout.addStretch(1)
+
+    def _retranslate(self) -> None:
+        tr = self._loc.tr
+        self._title.setText(tr("settings.title"))
+        self._row_company.setText(tr("settings.company_name"))
+        self._row_currency.setText(tr("settings.currency"))
+        self._row_phone.setText(tr("settings.company_phone"))
+        self._save.setText(tr("common.save"))
+
+    def _load(self) -> None:
+        result = self._service.get_all()
+        values = result.value if result.is_success else {}
+        self._company_name.setText(values.get(SettingKeys.COMPANY_NAME, ""))
+        self._currency.setText(values.get(SettingKeys.COMPANY_CURRENCY, ""))
+        self._phone.setText(values.get(SettingKeys.COMPANY_PHONE, ""))
+
+    def _on_save(self) -> None:
+        updated_by = self._current_user.id if self._current_user is not None else None
+        result = self._service.save(
+            {
+                SettingKeys.COMPANY_NAME: self._company_name.text().strip(),
+                SettingKeys.COMPANY_CURRENCY: self._currency.text().strip(),
+                SettingKeys.COMPANY_PHONE: self._phone.text().strip(),
+            },
+            updated_by=updated_by,
+        )
+        title = self._loc.tr("settings.title")
+        if result.is_failure:
+            QMessageBox.warning(self, title, result.error.message if result.error else "")
+            return
+        QMessageBox.information(self, title, self._loc.tr("settings.saved"))

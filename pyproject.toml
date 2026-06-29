@@ -1,0 +1,81 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gym-erp"
+version = "0.1.0"
+description = "Enterprise Gym Management ERP - offline-first native desktop application (PySide6)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+authors = [{ name = "Gym ERP Engineering" }]
+
+# Runtime dependencies. Pinned to compatible ranges to keep cross-platform builds reproducible.
+dependencies = [
+    "PySide6>=6.6,<6.9",        # Native Qt6 desktop UI
+    "SQLAlchemy>=2.0,<2.1",     # ORM (SQLite now, PostgreSQL-ready)
+    "alembic>=1.13",            # Schema migrations
+    "pydantic>=2.6,<3",         # DTOs / validation
+    "pydantic-settings>=2.2",   # Typed configuration
+    "argon2-cffi>=23.1",        # Password hashing (argon2id)
+    "cryptography>=42.0",       # Field/settings encryption (Fernet)
+    "python-dateutil>=2.9",     # Robust date handling
+    "reportlab>=4.1",           # PDF reports / receipts / labels
+    "openpyxl>=3.1",            # Excel export/import
+    "qrcode[pil]>=7.4",         # QR generation (local)
+    "python-barcode>=0.15",     # Barcode generation (local)
+    "opencv-python>=4.9",       # Camera-based QR/barcode scanning
+    "Pillow>=10.2",             # Image processing (shared)
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "pytest-qt>=4.4",
+    "ruff>=0.4",
+    "mypy>=1.10",
+    "nuitka>=2.4",
+]
+
+[project.scripts]
+gym-erp = "launcher:main"
+
+[tool.setuptools]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra -q"
+markers = [
+    "unit: fast isolated tests (no Qt, no real DB files)",
+    "integration: tests that touch the database/filesystem",
+    "ui: tests that require a Qt application instance",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["app", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N", "SIM", "C4", "RUF", "BLE"]
+ignore = ["B008"]  # Allow callables in argument defaults (DI factories)
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["N802", "N803"]
+# __version__ re-exported from a constant is idiomatic (the rename is the point).
+"app/__init__.py" = ["N811"]
+# Theme stylesheets are long single-line QSS rules; wrapping hurts readability.
+"app/themes/theme_manager.py" = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_ignores = true
+warn_redundant_casts = true
+disallow_untyped_defs = false
+plugins = ["pydantic.mypy"]
+exclude = "(^|/)(\\.venv|build|dist)/"
