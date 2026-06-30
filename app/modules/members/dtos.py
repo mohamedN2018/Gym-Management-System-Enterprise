@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
+from decimal import Decimal
 
 from app.core.base.dto import BaseDTO
+from app.modules.members.models.measurement import MemberMeasurement
 from app.modules.members.models.member import Member
 
 
@@ -37,6 +39,32 @@ class MemberDTO(BaseDTO):
     address: str | None = None
     notes: str | None = None
     is_active: bool = True
+
+
+class CreateMeasurementRequest(BaseDTO):
+    member_id: int
+    weight_kg: Decimal | None = None
+    height_cm: Decimal | None = None
+
+
+class MeasurementDTO(BaseDTO):
+    id: int
+    member_id: int
+    weight_kg: Decimal | None = None
+    height_cm: Decimal | None = None
+    bmi: Decimal | None = None
+    measured_at: datetime
+
+
+def to_measurement_dto(measurement: MemberMeasurement) -> MeasurementDTO:
+    return MeasurementDTO(
+        id=measurement.id,
+        member_id=measurement.member_id,
+        weight_kg=measurement.weight_kg,
+        height_cm=measurement.height_cm,
+        bmi=measurement.bmi,
+        measured_at=measurement.measured_at,
+    )
 
 
 def to_member_dto(member: Member) -> MemberDTO:

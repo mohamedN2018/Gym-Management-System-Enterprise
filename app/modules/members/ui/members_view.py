@@ -28,6 +28,7 @@ from app.core.pagination import PageRequest, Sort
 from app.infrastructure.bootstrap import ApplicationContext
 from app.modules.members.dtos import MemberDTO
 from app.modules.members.services import MemberService
+from app.modules.members.ui.member_details_dialog import MemberDetailsDialog
 from app.modules.members.ui.member_form_dialog import MemberFormDialog
 from app.modules.members.ui.member_qr_dialog import MemberQrDialog
 from app.services.qr_code_service import QrCodeService
@@ -73,6 +74,9 @@ class MembersView(QWidget):
         self._search.setClearButtonEnabled(True)
         self._search.textChanged.connect(self.reload)
         toolbar.addWidget(self._search, 1)
+        self._details_button = QPushButton()
+        self._details_button.clicked.connect(self._on_details)
+        toolbar.addWidget(self._details_button, 0)
         self._qr_button = QPushButton()
         self._qr_button.clicked.connect(self._on_qr)
         toolbar.addWidget(self._qr_button, 0)
@@ -86,6 +90,7 @@ class MembersView(QWidget):
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.verticalHeader().setVisible(False)
         self._table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._table.doubleClicked.connect(lambda _i: self._on_details())
         layout.addWidget(self._table, 1)
 
         self._empty = QLabel()
@@ -101,6 +106,7 @@ class MembersView(QWidget):
         self._search.setPlaceholderText(tr("members.search_placeholder"))
         self._add_button.setText(tr("members.add"))
         self._qr_button.setText(tr("members.qr"))
+        self._details_button.setText(tr("members.details"))
         self._empty.setText(tr("members.empty"))
         self._table.setHorizontalHeaderLabels([tr(key) for key in _COLUMNS])
 
@@ -141,6 +147,26 @@ class MembersView(QWidget):
             self._show_error(result.error.message if result.error else "")
             return
         self.reload()
+
+    def _selected_member(self) -> MemberDTO | None:
+        row = self._table.currentRow()
+        if row < 0 or row >= len(self._members_data):
+            return None
+        return self._members_data[row]
+
+    def _on_details(self) -> None:
+        member = self._selected_member()
+        if member is None:
+            QMessageBox.information(
+                self, self._loc.tr("members.title"), self._loc.tr("member_qr.select_first")
+            )
+            return
+        MemberDetailsDialog(
+            context=self._context,
+            member=member,
+            current_user=self._current_user,
+            parent=self,
+        ).exec()
 
     def _on_qr(self) -> None:
         row = self._table.currentRow()
