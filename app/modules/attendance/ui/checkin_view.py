@@ -25,7 +25,12 @@ from app.modules.attendance.services import AttendanceService
 if TYPE_CHECKING:
     from app.modules.security.dtos import AuthenticatedUser
 
-_COLUMNS = ("checkin.col_time", "checkin.col_member", "checkin.col_status")
+_COLUMNS = (
+    "checkin.col_time",
+    "checkin.col_number",
+    "checkin.col_member",
+    "checkin.col_status",
+)
 
 
 class CheckInView(QWidget):
@@ -119,6 +124,11 @@ class CheckInView(QWidget):
         self._table.setRowCount(len(rows))
         for index, row in enumerate(rows):
             status = self._loc.tr("checkin.allowed" if row.allowed else "checkin.rejected")
-            values = (row.checked_in_at.strftime("%H:%M:%S"), row.member_name, status)
+            values = (
+                row.checked_in_at.strftime("%H:%M:%S"),
+                row.membership_number,
+                row.member_name,
+                status,
+            )
             for column, value in enumerate(values):
                 self._table.setItem(index, column, QTableWidgetItem(value))

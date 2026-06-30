@@ -26,6 +26,7 @@ class PaymentDTO(BaseDTO):
     method: str
     payment_type: str
     reference: str | None = None
+    note: str | None = None
     paid_at: datetime
 
 
@@ -38,5 +39,6 @@ def to_payment_dto(payment: Payment, *, member_label: str = "") -> PaymentDTO:
         method=payment.method,
         payment_type=payment.payment_type,
         reference=payment.reference,
+        note=payment.note,
         paid_at=payment.paid_at,
     )

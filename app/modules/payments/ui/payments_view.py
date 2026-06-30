@@ -28,6 +28,8 @@ _COLUMNS = (
     "payments.col_type",
     "payments.col_method",
     "payments.col_amount",
+    "payments.col_reference",
+    "payments.col_note",
 )
 
 
@@ -93,6 +95,8 @@ class PaymentsView(QWidget):
                 tr(f"payment_type.{payment.payment_type}"),
                 tr(f"payment_method.{payment.method}"),
                 f"{payment.amount:.2f}",
+                payment.reference or "—",
+                payment.note or "—",
             )
             for column, value in enumerate(values):
                 self._table.setItem(row, column, QTableWidgetItem(value))
