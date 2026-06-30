@@ -11,7 +11,12 @@ from app.core.pagination import Page, PageRequest
 from app.core.result import Result
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
 from app.logs.logging_service import LoggingService
-from app.modules.members.dtos import CreateMemberRequest, MemberDTO, to_member_dto
+from app.modules.members.dtos import (
+    CreateMemberRequest,
+    MemberDTO,
+    UpdateMemberRequest,
+    to_member_dto,
+)
 from app.modules.members.events import MemberEvents
 from app.modules.members.models.member import Member
 from app.modules.members.repositories import MemberRepository
@@ -84,6 +89,56 @@ class MemberService(BaseService):
             )
         self._publish(
             Event(MemberEvents.CREATED, {"member_id": dto.id, "number": dto.membership_number})
+        )
+        return dto
+
+    def update_member(
+        self, member_id: int, request: UpdateMemberRequest, *, updated_by: int | None = None
+    ) -> Result[MemberDTO]:
+        return self._guard(
+            lambda: self._update_member(member_id, request, updated_by),
+            message="Could not update member",
+        )
+
+    def _update_member(
+        self, member_id: int, request: UpdateMemberRequest, updated_by: int | None
+    ) -> MemberDTO:
+        self._validator.validate_and_raise(request)
+        with self._uow_factory() as uow:
+            repo = MemberRepository(uow.session)
+            member = repo.get_or_raise(member_id)
+            new_national_id = (request.national_id or "").strip() or None
+            if new_national_id and new_national_id != member.national_id:
+                clash = repo.find_one(national_id=new_national_id)
+                if clash is not None and clash.id != member.id:
+                    raise ConflictError(
+                        "National ID already exists.",
+                        details={"field": "national_id", "value": new_national_id},
+                    )
+            member.first_name = request.first_name.strip()
+            member.last_name = (request.last_name or "").strip() or None
+            member.phone = (request.phone or "").strip() or None
+            member.email = (request.email or "").strip() or None
+            member.national_id = new_national_id
+            member.gender = request.gender or None
+            member.birth_date = request.birth_date
+            member.address = (request.address or "").strip() or None
+            member.notes = (request.notes or "").strip() or None
+            member.updated_by = updated_by
+            repo.update(member)
+            dto = to_member_dto(member)
+            uow.commit()
+
+        if self._logging:
+            self._logging.audit(
+                action="update",
+                module="members",
+                result="success",
+                user=updated_by,
+                new_value={"membership_number": dto.membership_number, "id": dto.id},
+            )
+        self._publish(
+            Event(MemberEvents.UPDATED, {"member_id": dto.id, "number": dto.membership_number})
         )
         return dto
 

@@ -75,6 +75,13 @@ class MemberDetailsDialog(QDialog):
         profile.addRow(tr("member_form.phone"), QLabel(member.phone or "—"))
         profile.addRow(tr("member_form.email"), QLabel(member.email or "—"))
         profile.addRow(tr("member_form.national_id"), QLabel(member.national_id or "—"))
+        profile.addRow(tr("member_form.gender"), QLabel(self._gender_label(member.gender)))
+        profile.addRow(tr("member_form.birth_date"), QLabel(self._birth_label(member)))
+        profile.addRow(tr("member_form.address"), QLabel(member.address or "—"))
+        if member.notes:
+            notes = QLabel(member.notes)
+            notes.setWordWrap(True)
+            profile.addRow(tr("member_form.notes"), notes)
         root.addLayout(profile)
 
         # Subscription status.
@@ -119,6 +126,20 @@ class MemberDetailsDialog(QDialog):
 
         self._load_subscription()
         self._reload_measurements()
+
+    def _gender_label(self, gender: str | None) -> str:
+        if gender not in ("male", "female"):
+            return "—"
+        return self._loc.tr(f"member_form.gender_{gender}")
+
+    def _birth_label(self, member: MemberDTO) -> str:
+        if member.birth_date is None:
+            return "—"
+        age = member.age
+        text = member.birth_date.strftime("%Y-%m-%d")
+        if age is not None:
+            text = self._loc.tr("member_details.birth_with_age", date=text, age=age)
+        return text
 
     def _load_subscription(self) -> None:
         tr = self._loc.tr

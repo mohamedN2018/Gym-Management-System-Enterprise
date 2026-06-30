@@ -24,6 +24,20 @@ class CreateMemberRequest(BaseDTO):
     membership_number: str | None = None
 
 
+class UpdateMemberRequest(BaseDTO):
+    """Editable member fields. The membership number is immutable (printed on cards/QR)."""
+
+    first_name: str
+    last_name: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    national_id: str | None = None
+    gender: str | None = None
+    birth_date: date | None = None
+    address: str | None = None
+    notes: str | None = None
+
+
 class MemberDTO(BaseDTO):
     id: int
     uuid: str
@@ -39,6 +53,17 @@ class MemberDTO(BaseDTO):
     address: str | None = None
     notes: str | None = None
     is_active: bool = True
+
+    @property
+    def age(self) -> int | None:
+        """Age in whole years derived from ``birth_date`` (None when unknown)."""
+        if self.birth_date is None:
+            return None
+        today = date.today()
+        years = today.year - self.birth_date.year
+        if (today.month, today.day) < (self.birth_date.month, self.birth_date.day):
+            years -= 1
+        return max(years, 0)
 
 
 class CreateMeasurementRequest(BaseDTO):

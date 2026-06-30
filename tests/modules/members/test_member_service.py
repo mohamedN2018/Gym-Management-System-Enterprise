@@ -1,8 +1,10 @@
+from datetime import date
+
 import pytest
 from app.core.errors import ErrorCode
 from app.core.pagination import PageRequest
 from app.infrastructure import ApplicationContext
-from app.modules.members.dtos import CreateMemberRequest
+from app.modules.members.dtos import CreateMemberRequest, UpdateMemberRequest
 from app.modules.members.services import MemberService
 from app.modules.members.setup import register_members_services
 
@@ -64,6 +66,61 @@ def test_list_and_search(members):
     assert found.is_success
     assert found.value.total == 1
     assert found.value.items[0].first_name == "Khaled"
+
+
+def test_update_member_changes_editable_fields(members):
+    created = members.create_member(CreateMemberRequest(first_name="Ahmed"))
+    assert created.is_success
+    member_id = created.value.id
+
+    updated = members.update_member(
+        member_id,
+        UpdateMemberRequest(
+            first_name="Ahmed",
+            last_name="Hassan",
+            phone="01000000000",
+            gender="male",
+            birth_date=date(1995, 5, 20),
+            notes="VIP",
+        ),
+    )
+    assert updated.is_success
+    assert updated.value.full_name == "Ahmed Hassan"
+    assert updated.value.gender == "male"
+    assert updated.value.birth_date == date(1995, 5, 20)
+    assert updated.value.age == members.get_member(member_id).value.age
+    assert updated.value.notes == "VIP"
+    # Membership number stays stable across edits.
+    assert updated.value.membership_number == created.value.membership_number
+
+
+def test_update_member_missing_is_not_found(members):
+    result = members.update_member(999, UpdateMemberRequest(first_name="Ghost"))
+    assert result.is_failure
+    assert result.error.code is ErrorCode.NOT_FOUND
+
+
+def test_update_member_duplicate_national_id_conflicts(members):
+    first = members.create_member(CreateMemberRequest(first_name="A", national_id="111"))
+    assert first.is_success
+    second = members.create_member(CreateMemberRequest(first_name="B", national_id="222"))
+    assert second.is_success
+
+    clash = members.update_member(
+        second.value.id, UpdateMemberRequest(first_name="B", national_id="111")
+    )
+    assert clash.is_failure
+    assert clash.error.code is ErrorCode.CONFLICT
+
+
+def test_update_member_rejects_bad_email(members):
+    created = members.create_member(CreateMemberRequest(first_name="Sara"))
+    assert created.is_success
+    result = members.update_member(
+        created.value.id, UpdateMemberRequest(first_name="Sara", email="not-an-email")
+    )
+    assert result.is_failure
+    assert result.error.code is ErrorCode.VALIDATION
 
 
 def test_get_missing_member_is_not_found(members):

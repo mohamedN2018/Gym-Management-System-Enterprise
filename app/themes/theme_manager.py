@@ -61,8 +61,11 @@ QPushButton:pressed { background-color: #2f49d8; }
 QPushButton:disabled { background-color: #2b3242; color: #5b6472; }
 QPushButton:flat { background: transparent; color: #aab2c5; font-weight: 600; }
 QPushButton:flat:hover { color: #ffffff; }
+QPushButton#DangerButton { background-color: #b3261e; }
+QPushButton#DangerButton:hover { background-color: #d4332a; }
+QPushButton#DangerButton:pressed { background-color: #8f1d17; }
 
-QLineEdit, QComboBox { background-color: #11141b; border: 1px solid #2b3242; border-radius: 8px; padding: 8px 10px; color: #e6e9f0; selection-background-color: #3d5afe; }
+QLineEdit, QComboBox, QDateEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox { background-color: #11141b; border: 1px solid #2b3242; border-radius: 8px; padding: 8px 10px; color: #e6e9f0; selection-background-color: #3d5afe; }
 QLineEdit:focus, QComboBox:focus { border: 1px solid #3d5afe; }
 QComboBox QAbstractItemView { background-color: #1c2230; border: 1px solid #2b3242; selection-background-color: #3d5afe; }
 
@@ -118,9 +121,12 @@ QPushButton:pressed { background-color: #2740c0; }
 QPushButton:disabled { background-color: #cbd5e1; color: #94a3b8; }
 QPushButton:flat { background: transparent; color: #5b6472; font-weight: 600; }
 QPushButton:flat:hover { color: #1f2430; }
+QPushButton#DangerButton { background-color: #c0271f; }
+QPushButton#DangerButton:hover { background-color: #a51f18; }
+QPushButton#DangerButton:pressed { background-color: #8f1d17; }
 
-QLineEdit, QComboBox { background-color: #ffffff; border: 1px solid #d6deea; border-radius: 8px; padding: 8px 10px; color: #1f2430; selection-background-color: #3d5afe; selection-color: #ffffff; }
-QLineEdit:focus, QComboBox:focus { border: 1px solid #3d5afe; }
+QLineEdit, QComboBox, QDateEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox { background-color: #ffffff; border: 1px solid #d6deea; border-radius: 8px; padding: 8px 10px; color: #1f2430; selection-background-color: #3d5afe; selection-color: #ffffff; }
+QLineEdit:focus, QComboBox:focus, QDateEdit:focus, QPlainTextEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus { border: 1px solid #3d5afe; }
 QComboBox QAbstractItemView { background-color: #ffffff; border: 1px solid #d6deea; selection-background-color: #3d5afe; selection-color: #ffffff; }
 
 QTableWidget, QTableView { background-color: #ffffff; alternate-background-color: #f6f8fc; gridline-color: #e7ebf3; border: 1px solid #e2e8f0; border-radius: 10px; }

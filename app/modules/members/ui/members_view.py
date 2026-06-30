@@ -37,7 +37,14 @@ if TYPE_CHECKING:
     from app.modules.security.dtos import AuthenticatedUser
 
 _PAGE_SIZE = 200
-_COLUMNS = ("members.col_number", "members.col_name", "members.col_phone", "members.col_email")
+_COLUMNS = (
+    "members.col_number",
+    "members.col_name",
+    "members.col_phone",
+    "members.col_email",
+    "members.col_national_id",
+    "members.col_status",
+)
 
 
 class MembersView(QWidget):
@@ -77,10 +84,18 @@ class MembersView(QWidget):
         self._details_button = QPushButton()
         self._details_button.clicked.connect(self._on_details)
         toolbar.addWidget(self._details_button, 0)
+        self._edit_button = QPushButton()
+        self._edit_button.clicked.connect(self._on_edit)
+        toolbar.addWidget(self._edit_button, 0)
+        self._delete_button = QPushButton()
+        self._delete_button.setObjectName("DangerButton")
+        self._delete_button.clicked.connect(self._on_delete)
+        toolbar.addWidget(self._delete_button, 0)
         self._qr_button = QPushButton()
         self._qr_button.clicked.connect(self._on_qr)
         toolbar.addWidget(self._qr_button, 0)
         self._add_button = QPushButton()
+        self._add_button.setObjectName("PrimaryButton")
         self._add_button.clicked.connect(self._on_add)
         toolbar.addWidget(self._add_button, 0)
         layout.addLayout(toolbar)
@@ -107,6 +122,8 @@ class MembersView(QWidget):
         self._add_button.setText(tr("members.add"))
         self._qr_button.setText(tr("members.qr"))
         self._details_button.setText(tr("members.details"))
+        self._edit_button.setText(tr("members.edit"))
+        self._delete_button.setText(tr("members.delete"))
         self._empty.setText(tr("members.empty"))
         self._table.setHorizontalHeaderLabels([tr(key) for key in _COLUMNS])
 
@@ -124,12 +141,16 @@ class MembersView(QWidget):
     def _populate(self, members: list[MemberDTO]) -> None:
         self._members_data = members
         self._table.setRowCount(len(members))
+        tr = self._loc.tr
         for row, member in enumerate(members):
+            status = tr("status.active") if member.is_active else tr("status.inactive")
             values = (
                 member.membership_number,
                 member.full_name,
-                member.phone or "",
-                member.email or "",
+                member.phone or "—",
+                member.email or "—",
+                member.national_id or "—",
+                status,
             )
             for column, value in enumerate(values):
                 self._table.setItem(row, column, QTableWidgetItem(value))
@@ -148,6 +169,49 @@ class MembersView(QWidget):
             return
         self.reload()
 
+    def _on_edit(self) -> None:
+        member = self._selected_member()
+        if member is None:
+            self._require_selection()
+            return
+        dialog = MemberFormDialog(localization=self._loc, member=member, parent=self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        updated_by = self._current_user.id if self._current_user is not None else None
+        result = self._service.update_member(
+            member.id, dialog.to_update_request(), updated_by=updated_by
+        )
+        if result.is_failure:
+            self._show_error(result.error.message if result.error else "")
+            return
+        self.reload()
+
+    def _on_delete(self) -> None:
+        member = self._selected_member()
+        if member is None:
+            self._require_selection()
+            return
+        confirm = QMessageBox.question(
+            self,
+            self._loc.tr("members.delete_title"),
+            self._loc.tr("members.delete_confirm", name=member.full_name),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        deleted_by = self._current_user.id if self._current_user is not None else None
+        result = self._service.delete_member(member.id, deleted_by=deleted_by)
+        if result.is_failure:
+            self._show_error(result.error.message if result.error else "")
+            return
+        self.reload()
+
+    def _require_selection(self) -> None:
+        QMessageBox.information(
+            self, self._loc.tr("members.title"), self._loc.tr("member_qr.select_first")
+        )
+
     def _selected_member(self) -> MemberDTO | None:
         row = self._table.currentRow()
         if row < 0 or row >= len(self._members_data):
@@ -157,9 +221,7 @@ class MembersView(QWidget):
     def _on_details(self) -> None:
         member = self._selected_member()
         if member is None:
-            QMessageBox.information(
-                self, self._loc.tr("members.title"), self._loc.tr("member_qr.select_first")
-            )
+            self._require_selection()
             return
         MemberDetailsDialog(
             context=self._context,
@@ -169,13 +231,10 @@ class MembersView(QWidget):
         ).exec()
 
     def _on_qr(self) -> None:
-        row = self._table.currentRow()
-        if row < 0 or row >= len(self._members_data):
-            QMessageBox.information(
-                self, self._loc.tr("members.title"), self._loc.tr("member_qr.select_first")
-            )
+        member = self._selected_member()
+        if member is None:
+            self._require_selection()
             return
-        member = self._members_data[row]
         dialog = MemberQrDialog(
             localization=self._loc,
             qr_service=self._qr,
