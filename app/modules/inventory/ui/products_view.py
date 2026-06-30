@@ -24,23 +24,39 @@ from PySide6.QtWidgets import (
 from app.core.pagination import PageRequest, Sort
 from app.infrastructure.bootstrap import ApplicationContext
 from app.localization.localization_service import LocalizationService
-from app.modules.inventory.dtos import CreateProductRequest, ProductDTO
+from app.modules.inventory.dtos import CreateProductRequest, ProductDTO, UpdateProductRequest
 from app.modules.inventory.services import ProductService
 
 if TYPE_CHECKING:
     from app.modules.security.dtos import AuthenticatedUser
 
-_COLUMNS = ("products.col_sku", "products.col_name", "products.col_price", "products.col_stock")
+_COLUMNS = (
+    "products.col_sku",
+    "products.col_name",
+    "products.col_price",
+    "products.col_stock",
+    "products.col_category",
+    "products.col_barcode",
+)
 
 
 class _ProductFormDialog(QDialog):
-    def __init__(self, localization: LocalizationService, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        localization: LocalizationService,
+        parent: QWidget | None = None,
+        *,
+        product: ProductDTO | None = None,
+    ) -> None:
         super().__init__(parent)
         self._loc = localization
+        self._product = product
         self.setModal(True)
         self.setMinimumWidth(380)
         tr = localization.tr
-        self.setWindowTitle(tr("product_form.title"))
+        self.setWindowTitle(
+            tr("product_form.title") if product is None else tr("product_form.edit_title")
+        )
 
         root = QVBoxLayout(self)
         form = QFormLayout()
@@ -48,10 +64,12 @@ class _ProductFormDialog(QDialog):
         self._price = QLineEdit("0")
         self._stock = QLineEdit("0")
         self._category = QLineEdit()
+        self._barcode = QLineEdit()
         form.addRow(tr("product_form.name"), self._name)
         form.addRow(tr("product_form.price"), self._price)
         form.addRow(tr("product_form.stock"), self._stock)
         form.addRow(tr("product_form.category"), self._category)
+        form.addRow(tr("product_form.barcode"), self._barcode)
         root.addLayout(form)
 
         self._error = QLabel()
@@ -69,6 +87,16 @@ class _ProductFormDialog(QDialog):
         buttons.addWidget(cancel)
         buttons.addWidget(save)
         root.addLayout(buttons)
+
+        if product is not None:
+            self._prefill(product)
+
+    def _prefill(self, product: ProductDTO) -> None:
+        self._name.setText(product.name)
+        self._price.setText(f"{product.price:.2f}")
+        self._stock.setText(str(product.stock_quantity))
+        self._category.setText(product.category or "")
+        self._barcode.setText(product.barcode or "")
 
     def _on_accept(self) -> None:
         if not self._name.text().strip():
@@ -93,6 +121,16 @@ class _ProductFormDialog(QDialog):
             price=self._parsed_price,
             stock_quantity=self._parsed_stock,
             category=self._category.text().strip() or None,
+            barcode=self._barcode.text().strip() or None,
+        )
+
+    def to_update_request(self) -> UpdateProductRequest:
+        return UpdateProductRequest(
+            name=self._name.text().strip(),
+            price=self._parsed_price,
+            stock_quantity=self._parsed_stock,
+            category=self._category.text().strip() or None,
+            barcode=self._barcode.text().strip() or None,
         )
 
 
@@ -104,6 +142,7 @@ class ProductsView(QWidget):
         self._loc = context.localization
         self._current_user = current_user
         self._service: ProductService = context.container.resolve(ProductService)
+        self._products_data: list[ProductDTO] = []
         self._build_ui()
         self._unsubscribe = self._loc.on_change(lambda _c: self._retranslate())
         self.destroyed.connect(lambda: self._unsubscribe())
@@ -120,7 +159,15 @@ class ProductsView(QWidget):
 
         bar = QHBoxLayout()
         bar.addStretch(1)
+        self._edit = QPushButton()
+        self._edit.clicked.connect(self._on_edit)
+        bar.addWidget(self._edit)
+        self._delete = QPushButton()
+        self._delete.setObjectName("DangerButton")
+        self._delete.clicked.connect(self._on_delete)
+        bar.addWidget(self._delete)
         self._add = QPushButton()
+        self._add.setObjectName("PrimaryButton")
         self._add.clicked.connect(self._on_add)
         bar.addWidget(self._add)
         layout.addLayout(bar)
@@ -136,6 +183,8 @@ class ProductsView(QWidget):
         tr = self._loc.tr
         self._title.setText(tr("products.title"))
         self._add.setText(tr("products.add"))
+        self._edit.setText(tr("products.edit"))
+        self._delete.setText(tr("products.delete"))
         self._table.setHorizontalHeaderLabels([tr(key) for key in _COLUMNS])
 
     def reload(self) -> None:
@@ -145,6 +194,7 @@ class ProductsView(QWidget):
         self._populate(result.value.items)
 
     def _populate(self, products: list[ProductDTO]) -> None:
+        self._products_data = products
         self._table.setRowCount(len(products))
         for row, product in enumerate(products):
             values = (
@@ -152,9 +202,22 @@ class ProductsView(QWidget):
                 product.name,
                 f"{product.price:.2f}",
                 str(product.stock_quantity),
+                product.category or "—",
+                product.barcode or "—",
             )
             for column, value in enumerate(values):
                 self._table.setItem(row, column, QTableWidgetItem(value))
+
+    def _selected_product(self) -> ProductDTO | None:
+        row = self._table.currentRow()
+        if row < 0 or row >= len(self._products_data):
+            return None
+        return self._products_data[row]
+
+    def _require_selection(self) -> None:
+        QMessageBox.information(
+            self, self._loc.tr("products.title"), self._loc.tr("products.select_first")
+        )
 
     def _on_add(self) -> None:
         dialog = _ProductFormDialog(self._loc, self)
@@ -162,6 +225,48 @@ class ProductsView(QWidget):
             return
         created_by = self._current_user.id if self._current_user is not None else None
         result = self._service.create_product(dialog.to_request(), created_by=created_by)
+        if result.is_failure:
+            QMessageBox.warning(
+                self, self._loc.tr("products.title"), result.error.message if result.error else ""
+            )
+            return
+        self.reload()
+
+    def _on_edit(self) -> None:
+        product = self._selected_product()
+        if product is None:
+            self._require_selection()
+            return
+        dialog = _ProductFormDialog(self._loc, self, product=product)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        updated_by = self._current_user.id if self._current_user is not None else None
+        result = self._service.update_product(
+            product.id, dialog.to_update_request(), updated_by=updated_by
+        )
+        if result.is_failure:
+            QMessageBox.warning(
+                self, self._loc.tr("products.title"), result.error.message if result.error else ""
+            )
+            return
+        self.reload()
+
+    def _on_delete(self) -> None:
+        product = self._selected_product()
+        if product is None:
+            self._require_selection()
+            return
+        confirm = QMessageBox.question(
+            self,
+            self._loc.tr("products.delete_title"),
+            self._loc.tr("products.delete_confirm", name=product.name),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        deleted_by = self._current_user.id if self._current_user is not None else None
+        result = self._service.delete_product(product.id, deleted_by=deleted_by)
         if result.is_failure:
             QMessageBox.warning(
                 self, self._loc.tr("products.title"), result.error.message if result.error else ""

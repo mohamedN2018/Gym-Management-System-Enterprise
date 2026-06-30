@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
 from app.core.pagination import PageRequest, Sort
 from app.infrastructure.bootstrap import ApplicationContext
 from app.localization.localization_service import LocalizationService
-from app.modules.expenses.dtos import ExpenseDTO, RecordExpenseRequest
+from app.modules.expenses.dtos import ExpenseDTO, RecordExpenseRequest, UpdateExpenseRequest
 from app.modules.expenses.services import ExpenseService
 
 if TYPE_CHECKING:
@@ -39,13 +39,22 @@ _COLUMNS = (
 
 
 class _ExpenseFormDialog(QDialog):
-    def __init__(self, localization: LocalizationService, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        localization: LocalizationService,
+        parent: QWidget | None = None,
+        *,
+        expense: ExpenseDTO | None = None,
+    ) -> None:
         super().__init__(parent)
         self._loc = localization
+        self._expense = expense
         self.setModal(True)
         self.setMinimumWidth(380)
         tr = localization.tr
-        self.setWindowTitle(tr("expense_form.title"))
+        self.setWindowTitle(
+            tr("expense_form.title") if expense is None else tr("expense_form.edit_title")
+        )
 
         root = QVBoxLayout(self)
         form = QFormLayout()
@@ -56,6 +65,9 @@ class _ExpenseFormDialog(QDialog):
         form.addRow(tr("expense_form.amount"), self._amount)
         form.addRow(tr("expense_form.note"), self._note)
         root.addLayout(form)
+
+        if expense is not None:
+            self._prefill(expense)
 
         self._error = QLabel()
         self._error.setObjectName("StatusBad")
@@ -89,8 +101,20 @@ class _ExpenseFormDialog(QDialog):
         self._error.setText(self._loc.tr(key))
         self._error.setVisible(True)
 
+    def _prefill(self, expense: ExpenseDTO) -> None:
+        self._category.setText(expense.category)
+        self._amount.setText(f"{expense.amount:.2f}")
+        self._note.setText(expense.note or "")
+
     def to_request(self) -> RecordExpenseRequest:
         return RecordExpenseRequest(
+            category=self._category.text().strip(),
+            amount=self._parsed_amount,
+            note=self._note.text().strip() or None,
+        )
+
+    def to_update_request(self) -> UpdateExpenseRequest:
+        return UpdateExpenseRequest(
             category=self._category.text().strip(),
             amount=self._parsed_amount,
             note=self._note.text().strip() or None,
@@ -105,6 +129,7 @@ class ExpensesView(QWidget):
         self._loc = context.localization
         self._current_user = current_user
         self._service: ExpenseService = context.container.resolve(ExpenseService)
+        self._expenses_data: list[ExpenseDTO] = []
         self._build_ui()
         self._unsubscribe = self._loc.on_change(lambda _c: self._retranslate())
         self.destroyed.connect(lambda: self._unsubscribe())
@@ -123,6 +148,13 @@ class ExpensesView(QWidget):
         self._summary = QLabel()
         self._summary.setObjectName("CardValue")
         bar.addWidget(self._summary, 1)
+        self._edit = QPushButton()
+        self._edit.clicked.connect(self._on_edit)
+        bar.addWidget(self._edit)
+        self._delete = QPushButton()
+        self._delete.setObjectName("DangerButton")
+        self._delete.clicked.connect(self._on_delete)
+        bar.addWidget(self._delete)
         self._add = QPushButton()
         self._add.clicked.connect(self._on_add)
         bar.addWidget(self._add)
@@ -139,6 +171,8 @@ class ExpensesView(QWidget):
         tr = self._loc.tr
         self._title.setText(tr("expenses.title"))
         self._add.setText(tr("expenses.add"))
+        self._edit.setText(tr("expenses.edit"))
+        self._delete.setText(tr("expenses.delete"))
         self._table.setHorizontalHeaderLabels([tr(key) for key in _COLUMNS])
         self._update_summary()
 
@@ -158,6 +192,7 @@ class ExpensesView(QWidget):
         self._update_summary()
 
     def _populate(self, expenses: list[ExpenseDTO]) -> None:
+        self._expenses_data = expenses
         self._table.setRowCount(len(expenses))
         for row, expense in enumerate(expenses):
             values = (
@@ -181,3 +216,56 @@ class ExpensesView(QWidget):
             )
             return
         self.reload()
+
+    def _on_edit(self) -> None:
+        expense = self._selected_expense()
+        if expense is None:
+            self._require_selection()
+            return
+        dialog = _ExpenseFormDialog(self._loc, self, expense=expense)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        updated_by = self._current_user.id if self._current_user is not None else None
+        result = self._service.update_expense(
+            expense.id, dialog.to_update_request(), updated_by=updated_by
+        )
+        if result.is_failure:
+            QMessageBox.warning(
+                self, self._loc.tr("expenses.title"), result.error.message if result.error else ""
+            )
+            return
+        self.reload()
+
+    def _on_delete(self) -> None:
+        expense = self._selected_expense()
+        if expense is None:
+            self._require_selection()
+            return
+        confirm = QMessageBox.question(
+            self,
+            self._loc.tr("expenses.delete_title"),
+            self._loc.tr("expenses.delete_confirm", name=expense.category),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        deleted_by = self._current_user.id if self._current_user is not None else None
+        result = self._service.delete_expense(expense.id, deleted_by=deleted_by)
+        if result.is_failure:
+            QMessageBox.warning(
+                self, self._loc.tr("expenses.title"), result.error.message if result.error else ""
+            )
+            return
+        self.reload()
+
+    def _require_selection(self) -> None:
+        QMessageBox.information(
+            self, self._loc.tr("expenses.title"), self._loc.tr("expenses.select_first")
+        )
+
+    def _selected_expense(self) -> ExpenseDTO | None:
+        row = self._table.currentRow()
+        if row < 0 or row >= len(self._expenses_data):
+            return None
+        return self._expenses_data[row]

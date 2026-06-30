@@ -25,23 +25,36 @@ from PySide6.QtWidgets import (
 from app.core.pagination import PageRequest, Sort
 from app.infrastructure.bootstrap import ApplicationContext
 from app.localization.localization_service import LocalizationService
-from app.modules.membership.dtos import CreatePlanRequest, PlanDTO
+from app.modules.membership.dtos import CreatePlanRequest, PlanDTO, UpdatePlanRequest
 from app.modules.membership.services import MembershipService
 
 if TYPE_CHECKING:
     from app.modules.security.dtos import AuthenticatedUser
 
-_COLUMNS = ("plans.col_code", "plans.col_name", "plans.col_price", "plans.col_duration")
+_COLUMNS = (
+    "plans.col_code",
+    "plans.col_name",
+    "plans.col_price",
+    "plans.col_duration",
+    "plans.col_description",
+)
 
 
 class _PlanFormDialog(QDialog):
-    def __init__(self, localization: LocalizationService, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        localization: LocalizationService,
+        parent: QWidget | None = None,
+        *,
+        plan: PlanDTO | None = None,
+    ) -> None:
         super().__init__(parent)
         self._loc = localization
+        self._plan = plan
         self.setModal(True)
         self.setMinimumWidth(380)
         tr = localization.tr
-        self.setWindowTitle(tr("plan_form.title"))
+        self.setWindowTitle(tr("plan_form.edit_title") if plan else tr("plan_form.title"))
 
         root = QVBoxLayout(self)
         form = QFormLayout()
@@ -54,6 +67,9 @@ class _PlanFormDialog(QDialog):
         form.addRow(tr("plan_form.duration"), self._duration)
         form.addRow(tr("plan_form.description"), self._description)
         root.addLayout(form)
+
+        if plan is not None:
+            self._prefill(plan)
 
         self._error = QLabel()
         self._error.setObjectName("StatusBad")
@@ -70,6 +86,12 @@ class _PlanFormDialog(QDialog):
         buttons.addWidget(cancel)
         buttons.addWidget(save)
         root.addLayout(buttons)
+
+    def _prefill(self, plan: PlanDTO) -> None:
+        self._name.setText(plan.name)
+        self._price.setText(f"{plan.price:.2f}")
+        self._duration.setText(str(plan.duration_days))
+        self._description.setText(plan.description or "")
 
     def _on_accept(self) -> None:
         if not self._name.text().strip():
@@ -96,6 +118,14 @@ class _PlanFormDialog(QDialog):
             description=self._description.text().strip() or None,
         )
 
+    def to_update_request(self) -> UpdatePlanRequest:
+        return UpdatePlanRequest(
+            name=self._name.text().strip(),
+            price=self._parsed_price,
+            duration_days=self._parsed_duration,
+            description=self._description.text().strip() or None,
+        )
+
 
 class PlansView(QWidget):
     def __init__(
@@ -105,6 +135,7 @@ class PlansView(QWidget):
         self._loc = context.localization
         self._current_user = current_user
         self._service: MembershipService = context.container.resolve(MembershipService)
+        self._plans_data: list[PlanDTO] = []
         self._build_ui()
         self._unsubscribe = self._loc.on_change(lambda _c: self._retranslate())
         self.destroyed.connect(lambda: self._unsubscribe())
@@ -121,6 +152,13 @@ class PlansView(QWidget):
 
         bar = QHBoxLayout()
         bar.addStretch(1)
+        self._edit = QPushButton()
+        self._edit.clicked.connect(self._on_edit)
+        bar.addWidget(self._edit)
+        self._delete = QPushButton()
+        self._delete.setObjectName("DangerButton")
+        self._delete.clicked.connect(self._on_delete)
+        bar.addWidget(self._delete)
         self._add = QPushButton()
         self._add.clicked.connect(self._on_add)
         bar.addWidget(self._add)
@@ -136,6 +174,8 @@ class PlansView(QWidget):
     def _retranslate(self) -> None:
         tr = self._loc.tr
         self._title.setText(tr("plans.title"))
+        self._edit.setText(tr("plans.edit"))
+        self._delete.setText(tr("plans.delete"))
         self._add.setText(tr("plans.add"))
         self._table.setHorizontalHeaderLabels([tr(key) for key in _COLUMNS])
 
@@ -146,9 +186,17 @@ class PlansView(QWidget):
         self._populate(result.value.items)
 
     def _populate(self, plans: list[PlanDTO]) -> None:
+        self._plans_data = plans
         self._table.setRowCount(len(plans))
         for row, plan in enumerate(plans):
-            values = (plan.code, plan.name, f"{plan.price:.2f}", str(plan.duration_days))
+            description = (plan.description or "—").splitlines()[0] if plan.description else "—"
+            values = (
+                plan.code,
+                plan.name,
+                f"{plan.price:.2f}",
+                str(plan.duration_days),
+                description,
+            )
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -166,3 +214,56 @@ class PlansView(QWidget):
             )
             return
         self.reload()
+
+    def _on_edit(self) -> None:
+        plan = self._selected_plan()
+        if plan is None:
+            self._require_selection()
+            return
+        dialog = _PlanFormDialog(self._loc, self, plan=plan)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        updated_by = self._current_user.id if self._current_user is not None else None
+        result = self._service.update_plan(
+            plan.id, dialog.to_update_request(), updated_by=updated_by
+        )
+        if result.is_failure:
+            QMessageBox.warning(
+                self, self._loc.tr("plans.title"), result.error.message if result.error else ""
+            )
+            return
+        self.reload()
+
+    def _on_delete(self) -> None:
+        plan = self._selected_plan()
+        if plan is None:
+            self._require_selection()
+            return
+        confirm = QMessageBox.question(
+            self,
+            self._loc.tr("plans.delete_title"),
+            self._loc.tr("plans.delete_confirm", name=plan.name),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        deleted_by = self._current_user.id if self._current_user is not None else None
+        result = self._service.delete_plan(plan.id, deleted_by=deleted_by)
+        if result.is_failure:
+            QMessageBox.warning(
+                self, self._loc.tr("plans.title"), result.error.message if result.error else ""
+            )
+            return
+        self.reload()
+
+    def _require_selection(self) -> None:
+        QMessageBox.information(
+            self, self._loc.tr("plans.title"), self._loc.tr("plans.select_first")
+        )
+
+    def _selected_plan(self) -> PlanDTO | None:
+        row = self._table.currentRow()
+        if row < 0 or row >= len(self._plans_data):
+            return None
+        return self._plans_data[row]

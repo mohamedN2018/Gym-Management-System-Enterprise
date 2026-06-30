@@ -15,6 +15,16 @@ class CreateTrainerRequest(BaseDTO):
     code: str | None = None
 
 
+class UpdateTrainerRequest(BaseDTO):
+    """Editable trainer fields. The trainer code is immutable."""
+
+    first_name: str
+    last_name: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    specialty: str | None = None
+
+
 class TrainerDTO(BaseDTO):
     id: int
     code: str

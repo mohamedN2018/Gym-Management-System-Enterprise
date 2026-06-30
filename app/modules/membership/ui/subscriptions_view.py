@@ -36,6 +36,7 @@ _COLUMNS = (
     "subscriptions.col_plan",
     "subscriptions.col_start",
     "subscriptions.col_end",
+    "subscriptions.col_price",
     "subscriptions.col_status",
 )
 
@@ -105,6 +106,7 @@ class SubscriptionsView(QWidget):
         self._current_user = current_user
         self._service: MembershipService = context.container.resolve(MembershipService)
         self._members: MemberService = context.container.resolve(MemberService)
+        self._subscriptions_data: list[SubscriptionDTO] = []
         self._build_ui()
         self._unsubscribe = self._loc.on_change(lambda _c: self._retranslate())
         self.destroyed.connect(lambda: self._unsubscribe())
@@ -121,7 +123,15 @@ class SubscriptionsView(QWidget):
 
         bar = QHBoxLayout()
         bar.addStretch(1)
+        self._cancel_btn = QPushButton()
+        self._cancel_btn.clicked.connect(self._on_cancel)
+        bar.addWidget(self._cancel_btn)
+        self._delete_btn = QPushButton()
+        self._delete_btn.setObjectName("DangerButton")
+        self._delete_btn.clicked.connect(self._on_delete)
+        bar.addWidget(self._delete_btn)
         self._add = QPushButton()
+        self._add.setObjectName("PrimaryButton")
         self._add.clicked.connect(self._on_add)
         bar.addWidget(self._add)
         layout.addLayout(bar)
@@ -137,6 +147,8 @@ class SubscriptionsView(QWidget):
         tr = self._loc.tr
         self._title.setText(tr("subscriptions.title"))
         self._add.setText(tr("subscriptions.add"))
+        self._cancel_btn.setText(tr("subscriptions.cancel"))
+        self._delete_btn.setText(tr("subscriptions.delete"))
         self._table.setHorizontalHeaderLabels([tr(key) for key in _COLUMNS])
 
     def reload(self) -> None:
@@ -148,6 +160,7 @@ class SubscriptionsView(QWidget):
         self._populate(result.value.items)
 
     def _populate(self, subscriptions: list[SubscriptionDTO]) -> None:
+        self._subscriptions_data = subscriptions
         self._table.setRowCount(len(subscriptions))
         for row, sub in enumerate(subscriptions):
             status_label = self._loc.tr(f"subscription_status.{sub.status}")
@@ -156,6 +169,7 @@ class SubscriptionsView(QWidget):
                 sub.plan_name,
                 sub.start_date.isoformat(),
                 sub.end_date.isoformat(),
+                f"{sub.price_paid:.2f}",
                 status_label,
             )
             for column, value in enumerate(values):
@@ -189,6 +203,67 @@ class SubscriptionsView(QWidget):
             QMessageBox.warning(
                 self,
                 self._loc.tr("subscriptions.create_failed"),
+                result.error.message if result.error else "",
+            )
+            return
+        self.reload()
+
+    def _selected_subscription(self) -> SubscriptionDTO | None:
+        row = self._table.currentRow()
+        if row < 0 or row >= len(self._subscriptions_data):
+            return None
+        return self._subscriptions_data[row]
+
+    def _require_selection(self) -> None:
+        QMessageBox.information(
+            self, self._loc.tr("subscriptions.title"), self._loc.tr("subscriptions.select_first")
+        )
+
+    def _on_cancel(self) -> None:
+        sub = self._selected_subscription()
+        if sub is None:
+            self._require_selection()
+            return
+        confirm = QMessageBox.question(
+            self,
+            self._loc.tr("subscriptions.cancel_title"),
+            self._loc.tr("subscriptions.cancel_confirm", member=sub.member_label),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        updated_by = self._current_user.id if self._current_user is not None else None
+        result = self._service.cancel_subscription(sub.id, updated_by=updated_by)
+        if result.is_failure:
+            QMessageBox.warning(
+                self,
+                self._loc.tr("subscriptions.title"),
+                result.error.message if result.error else "",
+            )
+            return
+        self.reload()
+
+    def _on_delete(self) -> None:
+        sub = self._selected_subscription()
+        if sub is None:
+            self._require_selection()
+            return
+        confirm = QMessageBox.question(
+            self,
+            self._loc.tr("subscriptions.delete_title"),
+            self._loc.tr("subscriptions.delete_confirm", member=sub.member_label),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        deleted_by = self._current_user.id if self._current_user is not None else None
+        result = self._service.delete_subscription(sub.id, deleted_by=deleted_by)
+        if result.is_failure:
+            QMessageBox.warning(
+                self,
+                self._loc.tr("subscriptions.title"),
                 result.error.message if result.error else "",
             )
             return

@@ -12,7 +12,12 @@ from app.core.pagination import Page, PageRequest, Sort
 from app.core.result import Result
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
 from app.logs.logging_service import LoggingService
-from app.modules.expenses.dtos import ExpenseDTO, RecordExpenseRequest, to_expense_dto
+from app.modules.expenses.dtos import (
+    ExpenseDTO,
+    RecordExpenseRequest,
+    UpdateExpenseRequest,
+    to_expense_dto,
+)
 from app.modules.expenses.events import ExpenseEvents
 from app.modules.expenses.models.expense import Expense
 from app.modules.expenses.repositories import ExpenseRepository
@@ -65,6 +70,53 @@ class ExpenseService(BaseService):
             return dto
 
         return self._guard(_record, message="Could not record expense")
+
+    def update_expense(
+        self, expense_id: int, request: UpdateExpenseRequest, *, updated_by: int | None = None
+    ) -> Result[ExpenseDTO]:
+        def _update() -> ExpenseDTO:
+            self._validator.validate_and_raise(request)
+            with self._uow_factory() as uow:
+                repo = ExpenseRepository(uow.session)
+                expense = repo.get_or_raise(expense_id)
+                expense.category = request.category.strip()
+                expense.amount = request.amount
+                expense.note = (request.note or "").strip() or None
+                expense.updated_by = updated_by
+                repo.update(expense)
+                dto = to_expense_dto(expense)
+                uow.commit()
+            if self._logging:
+                self._logging.audit(
+                    action="update",
+                    module="expenses",
+                    result="success",
+                    user=updated_by,
+                    new_value={"amount": str(dto.amount), "category": dto.category, "id": dto.id},
+                )
+            self._publish(Event(ExpenseEvents.UPDATED, {"expense_id": dto.id}))
+            return dto
+
+        return self._guard(_update, message="Could not update expense")
+
+    def delete_expense(self, expense_id: int, *, deleted_by: int | None = None) -> Result[None]:
+        def _delete() -> None:
+            with self._uow_factory() as uow:
+                repo = ExpenseRepository(uow.session)
+                expense = repo.get_or_raise(expense_id)
+                repo.soft_delete(expense, by=deleted_by)
+                uow.commit()
+            if self._logging:
+                self._logging.audit(
+                    action="delete",
+                    module="expenses",
+                    result="success",
+                    user=deleted_by,
+                    new_value={"id": expense_id},
+                )
+            self._publish(Event(ExpenseEvents.DELETED, {"expense_id": expense_id}))
+
+        return self._guard(_delete, message="Could not delete expense")
 
     def list_expenses(self, request: PageRequest | None = None) -> Result[Page[ExpenseDTO]]:
         def _list() -> Page[ExpenseDTO]:

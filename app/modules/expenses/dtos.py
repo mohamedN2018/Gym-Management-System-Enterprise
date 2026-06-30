@@ -15,6 +15,14 @@ class RecordExpenseRequest(BaseDTO):
     note: str | None = None
 
 
+class UpdateExpenseRequest(BaseDTO):
+    """Editable expense fields. ``paid_at`` stays as originally recorded and is not changed."""
+
+    category: str
+    amount: Decimal
+    note: str | None = None
+
+
 class ExpenseDTO(BaseDTO):
     id: int
     category: str

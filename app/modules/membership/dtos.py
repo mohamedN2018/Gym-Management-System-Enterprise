@@ -18,6 +18,15 @@ class CreatePlanRequest(BaseDTO):
     code: str | None = None
 
 
+class UpdatePlanRequest(BaseDTO):
+    """Editable plan fields. The plan code is immutable (referenced by subscriptions)."""
+
+    name: str
+    price: Decimal
+    duration_days: int
+    description: str | None = None
+
+
 class PlanDTO(BaseDTO):
     id: int
     code: str

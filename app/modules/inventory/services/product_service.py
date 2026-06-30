@@ -11,7 +11,12 @@ from app.core.pagination import Page, PageRequest, Sort
 from app.core.result import Result
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
 from app.logs.logging_service import LoggingService
-from app.modules.inventory.dtos import CreateProductRequest, ProductDTO, to_product_dto
+from app.modules.inventory.dtos import (
+    CreateProductRequest,
+    ProductDTO,
+    UpdateProductRequest,
+    to_product_dto,
+)
 from app.modules.inventory.events import InventoryEvents
 from app.modules.inventory.models.product import Product
 from app.modules.inventory.repositories import ProductRepository
@@ -58,6 +63,39 @@ class ProductService(BaseService):
             return dto
 
         return self._guard(_create, message="Could not create product")
+
+    def update_product(
+        self, product_id: int, request: UpdateProductRequest, *, updated_by: int | None = None
+    ) -> Result[ProductDTO]:
+        def _update() -> ProductDTO:
+            self._validator.validate_and_raise(request)
+            with self._uow_factory() as uow:
+                repo = ProductRepository(uow.session)
+                product = repo.get_or_raise(product_id)  # SKU immutable: never reassigned
+                product.name = request.name.strip()
+                product.price = request.price
+                product.stock_quantity = request.stock_quantity
+                product.category = (request.category or "").strip() or None
+                product.barcode = (request.barcode or "").strip() or None
+                product.updated_by = updated_by
+                repo.update(product)
+                dto = to_product_dto(product)
+                uow.commit()
+            self._publish(Event(InventoryEvents.PRODUCT_UPDATED, {"product_id": dto.id}))
+            return dto
+
+        return self._guard(_update, message="Could not update product")
+
+    def delete_product(self, product_id: int, *, deleted_by: int | None = None) -> Result[None]:
+        def _delete() -> None:
+            with self._uow_factory() as uow:
+                repo = ProductRepository(uow.session)
+                product = repo.get_or_raise(product_id)
+                repo.soft_delete(product, by=deleted_by)
+                uow.commit()
+            self._publish(Event(InventoryEvents.PRODUCT_DELETED, {"product_id": product_id}))
+
+        return self._guard(_delete, message="Could not delete product")
 
     def list_products(self, request: PageRequest | None = None) -> Result[Page[ProductDTO]]:
         def _list() -> Page[ProductDTO]:

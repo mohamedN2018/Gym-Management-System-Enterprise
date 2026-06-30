@@ -17,6 +17,16 @@ class CreateProductRequest(BaseDTO):
     sku: str | None = None
 
 
+class UpdateProductRequest(BaseDTO):
+    """Editable product fields. The SKU is immutable (auto-generated, used for lookups)."""
+
+    name: str
+    price: Decimal = Decimal("0")
+    stock_quantity: int = 0
+    category: str | None = None
+    barcode: str | None = None
+
+
 class ProductDTO(BaseDTO):
     id: int
     sku: str

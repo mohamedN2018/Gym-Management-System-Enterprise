@@ -19,6 +19,7 @@ from app.modules.membership.dtos import (
     CreateSubscriptionRequest,
     PlanDTO,
     SubscriptionDTO,
+    UpdatePlanRequest,
     to_plan_dto,
     to_subscription_dto,
 )
@@ -92,6 +93,40 @@ class MembershipService(BaseService):
 
         return self._guard(_list, message="Could not list plans")
 
+    def update_plan(
+        self, plan_id: int, request: UpdatePlanRequest, *, updated_by: int | None = None
+    ) -> Result[PlanDTO]:
+        def _update() -> PlanDTO:
+            self._plan_validator.validate_and_raise(request)
+            with self._uow_factory() as uow:
+                repo = PlanRepository(uow.session)
+                plan = repo.get_or_raise(plan_id)
+                plan.name = request.name.strip()
+                plan.price = request.price
+                plan.duration_days = request.duration_days
+                plan.description = (request.description or "").strip() or None
+                plan.updated_by = updated_by
+                repo.update(plan)
+                dto = to_plan_dto(plan)
+                uow.commit()
+            self._publish(
+                Event(MembershipEvents.PLAN_UPDATED, {"plan_id": dto.id, "code": dto.code})
+            )
+            return dto
+
+        return self._guard(_update, message="Could not update plan")
+
+    def delete_plan(self, plan_id: int, *, deleted_by: int | None = None) -> Result[None]:
+        def _delete() -> None:
+            with self._uow_factory() as uow:
+                repo = PlanRepository(uow.session)
+                plan = repo.get_or_raise(plan_id)
+                repo.soft_delete(plan, by=deleted_by)
+                uow.commit()
+            self._publish(Event(MembershipEvents.PLAN_DELETED, {"plan_id": plan_id}))
+
+        return self._guard(_delete, message="Could not delete plan")
+
     # --- subscriptions ----------------------------------------------------
     def subscribe(
         self, request: CreateSubscriptionRequest, *, created_by: int | None = None
@@ -161,6 +196,55 @@ class MembershipService(BaseService):
                 return Page(items=items, total=page.total, page=page.page, size=page.size)
 
         return self._guard(_list, message="Could not list subscriptions")
+
+    def cancel_subscription(
+        self, subscription_id: int, *, updated_by: int | None = None
+    ) -> Result[SubscriptionDTO]:
+        def _cancel() -> SubscriptionDTO:
+            with self._uow_factory() as uow:
+                members = MemberRepository(uow.session)
+                subs = SubscriptionRepository(uow.session)
+                subscription = subs.get_or_raise(subscription_id)
+                if subscription.status == SubscriptionStatus.CANCELLED:
+                    raise ConflictError(
+                        "Subscription is already cancelled.",
+                        details={"subscription_id": subscription_id},
+                    )
+                subscription.status = SubscriptionStatus.CANCELLED
+                subscription.updated_by = updated_by
+                subs.update(subscription)
+                member = members.get(subscription.member_id, include_deleted=True)
+                label = (
+                    f"{member.membership_number} — {member.full_name}"
+                    if member
+                    else str(subscription.member_id)
+                )
+                dto = to_subscription_dto(subscription, member_label=label)
+                uow.commit()
+            self._publish(
+                Event(
+                    MembershipEvents.SUBSCRIPTION_CANCELLED,
+                    {"subscription_id": dto.id, "member_id": dto.member_id},
+                )
+            )
+            return dto
+
+        return self._guard(_cancel, message="Could not cancel subscription")
+
+    def delete_subscription(
+        self, subscription_id: int, *, deleted_by: int | None = None
+    ) -> Result[None]:
+        def _delete() -> None:
+            with self._uow_factory() as uow:
+                subs = SubscriptionRepository(uow.session)
+                subscription = subs.get_or_raise(subscription_id)
+                subs.soft_delete(subscription, by=deleted_by)
+                uow.commit()
+            self._publish(
+                Event(MembershipEvents.SUBSCRIPTION_DELETED, {"subscription_id": subscription_id})
+            )
+
+        return self._guard(_delete, message="Could not delete subscription")
 
     def active_subscription(self, member_id: int) -> Result[ActiveSubscriptionDTO | None]:
         def _active() -> ActiveSubscriptionDTO | None:

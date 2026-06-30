@@ -18,6 +18,17 @@ class CreateEmployeeRequest(BaseDTO):
     code: str | None = None
 
 
+class UpdateEmployeeRequest(BaseDTO):
+    """Editable employee fields. The employee code is immutable (assigned on hire)."""
+
+    first_name: str
+    last_name: str | None = None
+    phone: str | None = None
+    position: str | None = None
+    department: str | None = None
+    salary: Decimal | None = None
+
+
 class EmployeeDTO(BaseDTO):
     id: int
     code: str
