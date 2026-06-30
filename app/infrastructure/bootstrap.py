@@ -9,6 +9,7 @@ construct infrastructure themselves.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session, sessionmaker
@@ -21,6 +22,7 @@ from app.localization.localization_service import LocalizationService
 from app.logs.logging_service import LoggingService
 from app.security.encryption import EncryptionService
 from app.security.password_hasher import PasswordHasher
+from app.services.backup_service import BackupService
 from app.services.qr_code_service import QrCodeService
 from app.settings import AppConfig, AppPaths, load_config
 
@@ -107,6 +109,10 @@ def bootstrap(config: AppConfig | None = None) -> ApplicationContext:
     container.register_instance(PasswordHasher, password_hasher)
     container.register_instance(EncryptionService, encryption)
     container.register_instance(QrCodeService, QrCodeService())
+    container.register_instance(
+        BackupService,
+        BackupService(paths=paths, now_provider=datetime.now, logging=logging_service),
+    )
     container.register_factory(
         SqlAlchemyUnitOfWork,
         lambda _c: SqlAlchemyUnitOfWork(session_factory),

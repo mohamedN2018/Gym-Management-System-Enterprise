@@ -27,6 +27,8 @@ class Permissions:
     INVENTORY_MANAGE = "inventory.manage"
     POS_USE = "pos.use"
     REPORTS_VIEW = "reports.view"
+    EXPENSES_VIEW = "expenses.view"
+    EXPENSES_MANAGE = "expenses.manage"
     EMPLOYEES_VIEW = "employees.view"
     EMPLOYEES_MANAGE = "employees.manage"
     NOTIFICATIONS_VIEW = "notifications.view"
@@ -77,6 +79,8 @@ ALL_PERMISSIONS: tuple[PermissionSpec, ...] = (
     PermissionSpec(Permissions.INVENTORY_MANAGE, "Create/edit products", "inventory"),
     PermissionSpec(Permissions.POS_USE, "Use point of sale", "inventory"),
     PermissionSpec(Permissions.REPORTS_VIEW, "Export reports", "reports"),
+    PermissionSpec(Permissions.EXPENSES_VIEW, "View expenses & profit", "expenses"),
+    PermissionSpec(Permissions.EXPENSES_MANAGE, "Record expenses", "expenses"),
     PermissionSpec(Permissions.EMPLOYEES_VIEW, "View employees", "employees"),
     PermissionSpec(Permissions.EMPLOYEES_MANAGE, "Create/edit employees", "employees"),
     PermissionSpec(Permissions.NOTIFICATIONS_VIEW, "View notifications", "notifications"),
@@ -111,6 +115,8 @@ DEFAULT_ROLES: tuple[RoleSpec, ...] = (
             Permissions.INVENTORY_MANAGE,
             Permissions.POS_USE,
             Permissions.REPORTS_VIEW,
+            Permissions.EXPENSES_VIEW,
+            Permissions.EXPENSES_MANAGE,
             Permissions.EMPLOYEES_VIEW,
             Permissions.EMPLOYEES_MANAGE,
             Permissions.NOTIFICATIONS_VIEW,

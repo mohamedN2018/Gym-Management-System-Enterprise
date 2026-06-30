@@ -67,7 +67,9 @@ def security_context(tmp_path: Path) -> Iterator[ApplicationContext]:
 def gym_context(tmp_path: Path) -> Iterator[ApplicationContext]:
     """A context with all business modules wired (security, members, membership, attendance)."""
     from app.modules.attendance.setup import register_attendance_services
+    from app.modules.audit.setup import register_audit_services
     from app.modules.employees.setup import register_employee_services
+    from app.modules.expenses.setup import register_expense_services
     from app.modules.inventory.setup import initialize_inventory
     from app.modules.members.setup import register_members_services
     from app.modules.membership.setup import initialize_membership
@@ -90,6 +92,8 @@ def gym_context(tmp_path: Path) -> Iterator[ApplicationContext]:
     register_report_services(context.container)
     register_employee_services(context.container)
     register_notification_services(context.container)
+    register_expense_services(context.container)
+    register_audit_services(context.container)
     try:
         yield context
     finally:

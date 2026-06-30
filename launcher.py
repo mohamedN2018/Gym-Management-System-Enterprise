@@ -43,7 +43,9 @@ def _run_check() -> int:
 
 def _run_gui() -> int:
     from app.modules.attendance.setup import register_attendance_services
+    from app.modules.audit.setup import register_audit_services
     from app.modules.employees.setup import register_employee_services
+    from app.modules.expenses.setup import register_expense_services
     from app.modules.inventory.setup import initialize_inventory
     from app.modules.members.setup import register_members_services
     from app.modules.membership.setup import initialize_membership
@@ -74,6 +76,8 @@ def _run_gui() -> int:
     register_report_services(context.container)
     register_employee_services(context.container)
     register_notification_services(context.container)
+    register_expense_services(context.container)
+    register_audit_services(context.container)
 
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
@@ -118,7 +122,9 @@ def _run_gui() -> int:
 def _nav_items() -> list:
     """Navigation contributions from business modules (extended as modules are added)."""
     from app.modules.attendance.ui.checkin_view import CheckInView
+    from app.modules.audit.ui.audit_view import AuditView
     from app.modules.employees.ui.employees_view import EmployeesView
+    from app.modules.expenses.ui.expenses_view import ExpensesView
     from app.modules.inventory.ui.pos_view import PosView
     from app.modules.inventory.ui.products_view import ProductsView
     from app.modules.members.ui.members_view import MembersView
@@ -174,6 +180,14 @@ def _nav_items() -> list:
             order=40,
         ),
         NavItem(
+            "expenses",
+            "nav.expenses",
+            "🧾",
+            lambda c, u: ExpensesView(c, u),
+            permission=Permissions.EXPENSES_VIEW,
+            order=42,
+        ),
+        NavItem(
             "trainers",
             "nav.trainers",
             "🏋️",
@@ -222,6 +236,14 @@ def _nav_items() -> list:
             order=15,
         ),
         NavItem(
+            "audit",
+            "nav.audit",
+            "📜",
+            lambda c, u: AuditView(c, u),
+            permission=Permissions.AUDIT_VIEW,
+            order=80,
+        ),
+        NavItem(
             "settings",
             "nav.settings",
             "⚙️",
@@ -236,6 +258,7 @@ def _kpi_items(context: ApplicationContext) -> list:
     """Dashboard KPI cards computed from module services."""
     from app.core.pagination import PageRequest
     from app.modules.attendance.services import AttendanceService
+    from app.modules.expenses.services import ExpenseService
     from app.modules.members.services import MemberService
     from app.modules.membership.services import MembershipService
     from app.modules.notifications.services import NotificationService
@@ -248,10 +271,14 @@ def _kpi_items(context: ApplicationContext) -> list:
     attendance = context.container.resolve(AttendanceService)
     payments = context.container.resolve(PaymentService)
     notifications = context.container.resolve(NotificationService)
+    expenses = context.container.resolve(ExpenseService)
 
     def _member_count() -> str:
         result = members.list_members(PageRequest(size=1))
         return str(result.value.total) if result.is_success else "—"
+
+    def _net_profit() -> str:
+        return f"{payments.total_revenue() - expenses.total_expenses():.2f}"
 
     return [
         KpiCard("kpi.members", "👥", _member_count, permission=Permissions.MEMBERS_VIEW, order=10),
@@ -282,6 +309,20 @@ def _kpi_items(context: ApplicationContext) -> list:
             lambda: f"{payments.total_revenue():.2f}",
             permission=Permissions.PAYMENTS_VIEW,
             order=50,
+        ),
+        KpiCard(
+            "kpi.total_expenses",
+            "🧾",
+            lambda: f"{expenses.total_expenses():.2f}",
+            permission=Permissions.EXPENSES_VIEW,
+            order=55,
+        ),
+        KpiCard(
+            "kpi.net_profit",
+            "💰",
+            _net_profit,
+            permission=Permissions.EXPENSES_VIEW,
+            order=58,
         ),
         KpiCard(
             "kpi.alerts",

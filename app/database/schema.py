@@ -18,6 +18,7 @@ def import_models() -> None:
     """Import all model packages so their tables are registered on ``Base.metadata``."""
     import app.modules.attendance.models
     import app.modules.employees.models
+    import app.modules.expenses.models
     import app.modules.inventory.models
     import app.modules.members.models
     import app.modules.membership.models

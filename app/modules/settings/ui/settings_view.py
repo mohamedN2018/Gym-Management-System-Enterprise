@@ -5,7 +5,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from PySide6.QtWidgets import (
+    QFileDialog,
     QFormLayout,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -18,6 +20,7 @@ from PySide6.QtWidgets import (
 from app.infrastructure.bootstrap import ApplicationContext
 from app.modules.settings.models.setting import SettingKeys
 from app.modules.settings.services import SettingsService
+from app.services.backup_service import BackupService
 
 if TYPE_CHECKING:
     from app.modules.security.dtos import AuthenticatedUser
@@ -31,6 +34,8 @@ class SettingsView(QWidget):
         self._loc = context.localization
         self._current_user = current_user
         self._service: SettingsService = context.container.resolve(SettingsService)
+        self._backup: BackupService = context.container.resolve(BackupService)
+        self._context = context
         self._build_ui()
         self._unsubscribe = self._loc.on_change(lambda _c: self._retranslate())
         self.destroyed.connect(lambda: self._unsubscribe())
@@ -65,6 +70,27 @@ class SettingsView(QWidget):
         self._save.clicked.connect(self._on_save)
         bar.addWidget(self._save)
         layout.addLayout(bar)
+
+        # --- Maintenance: backup / restore ---------------------------------
+        self._maintenance_title = QLabel()
+        self._maintenance_title.setObjectName("PageTitle")
+        layout.addSpacing(8)
+        layout.addWidget(self._maintenance_title)
+        maintenance = QFrame()
+        maintenance.setObjectName("Card")
+        maintenance_row = QHBoxLayout(maintenance)
+        maintenance_row.setContentsMargins(18, 14, 18, 14)
+        self._maintenance_hint = QLabel()
+        self._maintenance_hint.setObjectName("CardKey")
+        self._maintenance_hint.setWordWrap(True)
+        maintenance_row.addWidget(self._maintenance_hint, 1)
+        self._backup_btn = QPushButton()
+        self._backup_btn.clicked.connect(self._on_backup)
+        self._restore_btn = QPushButton()
+        self._restore_btn.clicked.connect(self._on_restore)
+        maintenance_row.addWidget(self._backup_btn)
+        maintenance_row.addWidget(self._restore_btn)
+        layout.addWidget(maintenance)
         layout.addStretch(1)
 
     def _retranslate(self) -> None:
@@ -74,6 +100,10 @@ class SettingsView(QWidget):
         self._row_currency.setText(tr("settings.currency"))
         self._row_phone.setText(tr("settings.company_phone"))
         self._save.setText(tr("common.save"))
+        self._maintenance_title.setText(tr("settings.maintenance"))
+        self._maintenance_hint.setText(tr("settings.maintenance_hint"))
+        self._backup_btn.setText(tr("settings.backup_now"))
+        self._restore_btn.setText(tr("settings.restore"))
 
     def _load(self) -> None:
         result = self._service.get_all()
@@ -97,3 +127,34 @@ class SettingsView(QWidget):
             QMessageBox.warning(self, title, result.error.message if result.error else "")
             return
         QMessageBox.information(self, title, self._loc.tr("settings.saved"))
+
+    def _on_backup(self) -> None:
+        result = self._backup.create_backup()
+        title = self._loc.tr("settings.maintenance")
+        if result.is_failure:
+            QMessageBox.warning(self, title, result.error.message if result.error else "")
+            return
+        QMessageBox.information(
+            self, title, self._loc.tr("settings.backup_done", file=result.value.name)
+        )
+
+    def _on_restore(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            self._loc.tr("settings.restore"),
+            str(self._context.paths.backups_dir),
+            "Database (*.db)",
+        )
+        if not path:
+            return
+        confirm = QMessageBox.question(
+            self, self._loc.tr("settings.restore"), self._loc.tr("settings.restore_confirm")
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        result = self._backup.restore_backup(path)
+        title = self._loc.tr("settings.maintenance")
+        if result.is_failure:
+            QMessageBox.warning(self, title, result.error.message if result.error else "")
+            return
+        QMessageBox.information(self, title, self._loc.tr("settings.restore_done"))
